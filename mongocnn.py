@@ -1,8 +1,6 @@
 import os
-import pymongo 
-from bson.json_util import dumps
+import pymongo
 import pandas as pd
-
 
 def main():
     uri = os.getenv('uri')
@@ -10,44 +8,31 @@ def main():
     db_name = os.getenv('db_name')
 
     try:
-        client = pymongo.MongoClient(uri)
-        if db_name in client.list_database_names():
-            db = client[db_name]
-        else:
-            print("Error: databse not found")
-            raise ValueError
-        if collection_name in db.list_collection_names():
-            collection = db[collection_name]
-        else:
-            print("Error:collection not found")
-            raise ValueError
-
+        client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=5000)
+        db = client[db_name]
+        collection = db[collection_name]
     except pymongo.errors.ServerSelectionTimeoutError as e:
-        print ("Error: could not connect to database:{}".format(e))
+        print("Error: Could not connect to the database: {}".format(e))
         raise e
 
     results = collection.find(
-          {"vote_average":{"$gt":"9.0"}},
-          {"title":1,"vote_average":1}
-          )
+        {"vote_average": {"$gt": 9.0}},
+        {"title": 1, "vote_average": 1}
+    )
 
-    with open('movies.json', 'w') as file:
-        file.write('[')
-        for document in results:
-            file.write(dumps(document))
-            file.write(',')
-        file.write(']')
+    movies = list(results)
 
-    mv_json = pd.read_json('movies.json')
-    mv_frame = pd.DataFrame.from_dict(mv_json)
-    mv_filter = mv_frame.filter(["title","vote_average"])
+    if movies:
+        df = pd.DataFrame(movies)
+        df_filtered = df[["title", "vote_average"]]
 
-    writer = pd.ExcelWriter('movies.xlsx', engine='xlsxwriter')
+        writer = pd.ExcelWriter('movies.xlsx', engine='xlsxwriter')
+        df_filtered.to_excel(writer, sheet_name='Movies', index=False)
+        writer.save()
 
-    mv_filter.to_excel(writer, sheet_name='Movies')
-
-    writer.close()
+        print("Movies exported to movies.xlsx successfully.")
+    else:
+        print("No movies found with vote average greater than 9.0.")
 
 if __name__ == '__main__':
     main()
-
